@@ -29,7 +29,7 @@ module Data.Dates.Parsing
   , negateInterval
   , minusInterval
   , dateInFormat
-  , extractDates, extract
+  , extractDates, extractDatesY, extract
   ) where
 
 import Control.Lens
@@ -185,7 +185,7 @@ pAbsDateTime year = do
 pAbsDate :: Stream s m Char => Int -> ParsecT s st m Date
 pAbsDate year = choice $ map (try . dateInFormat year)
     [euroNumDate, americanDate, strDate, writtenDate, dashDate,
-     dotDateMonth, dashDateMonth, slashDateMonth, spaceDate]
+     dotDateMonth, dashDateMonth, slashDateMonth, spaceDate, spaceDateMD]
 
 intervalToPeriod :: DateInterval -> Period
 intervalToPeriod (Days ds)   = mempty { periodDays   = ds}
@@ -373,15 +373,22 @@ parseDateTime :: Config
               -> Either ParseError DateTime
 parseDateTime c = runParser (pDateTime c) () ""
 
+-- | Same as extractDatesY, but will get the current year from the system, so you don't have to provide it.
 extractDates :: String -> IO [Date]
 extractDates str = do
     c <- defaultConfigIO
 
-    case runParser (extract (p (c ^. now))) () "" str of
+    pure $ extractDatesY (dateYear (timeGetDate (c ^. now))) str
+
+-- | Extract dates from a string, with the first argument being the current year (used for things like "Jan 18").
+--
+-- >>> extractDatesY 2018 "The party will be on 6/9"
+-- [Date 2018 June 9]
+extractDatesY :: Int -> String -> [Date]
+extractDatesY y str =
+    case parse (extract (pAbsDate y)) "" str of
         Left err -> error $ show err
-        Right dates -> pure dates
-    where
-        p = pAbsDate . dateYear . timeGetDate
+        Right dates -> dates
 
 extract :: Stream s m Char => ParsecT s st m a -> ParsecT s st m [a]
 extract parser = Text.Parsec.many loop

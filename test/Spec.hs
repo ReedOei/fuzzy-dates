@@ -120,3 +120,10 @@ spec = do
       , ("DECEMBER 8, -9", Date (-9) December 8)
       ]
 
+  describe "extractDatesY" $
+    mapM_ (\(str, ans) -> it ("understands '" ++ str ++ "'") (extractDatesY 2018 str `shouldBe` ans))
+        [ ("2017-08-9", [Date 2017 August 9])
+        , ("Jan 19", [Date 2018 January 19])
+        , ("The party will be on 6/9", [Date 2018 June 9])
+        , ("Start: November 27, 1993\nEnd: December 5, 1993", [Date 1993 November 27, Date 1993 December 5])]
+
