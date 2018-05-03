@@ -30,7 +30,11 @@ number n m = do
     _ -> parserZero
 
 pYear :: Stream s m Char => ParsecT s st m Int
-pYear = try pYearNormal <|> pYearAny
+pYear = do
+    n <- try pYearNormal <|> pYearAny
+        -- Assume two digit years are after 2000.
+        -- TODO: Update in 82 years (2018-05-03).
+    pure $ if n < 2000 && n < 100 && n >= 10 then n + 2000 else n
 
 pYearNormal :: Stream s m Char => ParsecT s st m Int
 pYearNormal = do
@@ -38,11 +42,7 @@ pYearNormal = do
 
     notFollowedBy (try (spaces >> yearAbbreviations) <|> (digit >> pure ""))
 
-    pure $
-        -- Assume two digit years are after 2000.
-        -- TODO: Update in 82 years (2018-05-03).
-        if n < 2000 && n < 100 then n + 2000
-        else n
+    pure n
 
 readNum :: (Num a, Stream s m Char) => ParsecT s st m a
 readNum = do
@@ -64,12 +64,14 @@ makeAbbr abb = [abb, foldl (\cur n -> cur ++ [n] ++ ".") "" abb]
 
 pYearAny :: Stream s m Char => ParsecT s st m Int
 pYearAny = do
+    spaces
     -- Allow abbreviations before or after.
     prefix <- optionMaybe yearAbbreviations
 
     spaces
     n <- readNum
     spaces
+
     suffix <- optionMaybe yearAbbreviations
 
     let isBC = case catMaybes [prefix, suffix] of

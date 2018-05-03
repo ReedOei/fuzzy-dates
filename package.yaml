@@ -24,6 +24,7 @@ dependencies:
 - parsec
 - hourglass
 - lens
+- hspec
 
 library:
   source-dirs: src
