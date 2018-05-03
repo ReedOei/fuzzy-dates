@@ -9,30 +9,39 @@ import Data.Maybe          (fromJust, catMaybes)
 import Text.Parsec
 import Text.Read (readMaybe)
 
+-- | Parsers the parser at least once, but no more than n times.
+takeN1 :: Stream s m Char => Int -> ParsecT s st m a -> ParsecT s st m [a]
+takeN1 0 _ = error "n must not be 0!"
+takeN1 1 parser = (:[]) <$> parser
+takeN1 n parser = do
+    v <- parser
+    rest <- takeN1 (n - 1) parser <|> pure []
+    pure $ v : rest
+
 -- | Parse natural number of N digits which is not greater than M
 number :: (Stream s m Char, Read a, Num a, Ord a)
        => Int -- ^ Number of digits
        -> a   -- ^ Maximum value
        -> ParsecT s st m a
 number n m = do
-  maybeT <- readMaybe <$> count n digit
+  maybeT <- readMaybe <$> takeN1 n digit
   case maybeT of
     Just t | t <= m -> pure t
-    _ -> fail "Nope"
+    _ -> parserZero
 
 pYear :: Stream s m Char => ParsecT s st m Int
-pYear = try pYearNormal <|>
-        pYearAny
+pYear = try pYearNormal <|> pYearAny
 
 pYearNormal :: Stream s m Char => ParsecT s st m Int
 pYearNormal = do
-    n <- read <$> (try (count 4 digit) <|> count 2 digit)
+    n <- read <$> many1 digit
 
-    notFollowedBy (try (spaces >> yearAbbreviations) <|>
-                   (digit >> pure ""))
+    notFollowedBy (try (spaces >> yearAbbreviations) <|> (digit >> pure ""))
 
     pure $
-        if n < 2000 then n + 2000
+        -- Assume two digit years are after 2000.
+        -- TODO: Update in 82 years (2018-05-03).
+        if n < 2000 && n < 100 then n + 2000
         else n
 
 readNum :: (Num a, Stream s m Char) => ParsecT s st m a
@@ -67,8 +76,7 @@ pYearAny = do
                 (abb:_) -> abb == "BC" || abb == "BCE"
                 [] -> False
 
-    pure $
-        if isBC then -n else n
+    pure $ if isBC then -n else n
 
 monthAssoc :: [(String, Month)]
 monthAssoc = [("january", January), ("jan", January), ("february", February), ("feb", February),

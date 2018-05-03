@@ -14,6 +14,7 @@ module Data.Dates.Parsing
   , parseDate
   , parseDateTime
   , pAbsDateTime
+  , pAbsDate
   , pDate
   , pDateTime
   , pTime
@@ -27,15 +28,17 @@ module Data.Dates.Parsing
   , addInterval
   , negateInterval
   , minusInterval
-  , extractDates
+  , dateInFormat
+  , extractDates, extract
   ) where
 
 import Control.Lens
+import Control.Monad
 
 import Data.Char                            (toLower)
 import Data.Data                            (Data, Typeable)
 import Data.Hourglass
-import Data.List                            (intercalate)
+import Data.List                            (intercalate, find)
 import Text.Parsec
 import Text.Read (readMaybe)
 
@@ -83,89 +86,9 @@ dateWeekDay = getWeekDay . timeGetDate
 lookupMonth :: String -> Either [Month] Month
 lookupMonth = uniqFuzzyMatch
 
-writtenDate :: Stream s m Char => ParsecT s st m Date
-writtenDate = do
-    m <- pMonth
-    spaces
-    d <- pDay
-    spaces
-    char ','
-    spaces
-    y <- pYear
-    return $ Date y m d
-
-euroNumDate :: Stream s m Char => ParsecT s st m Date
-euroNumDate = do
-    d <- pDay
-    char '.'
-    m <- pMonth
-    char '.'
-    y <- pYear
-    return $ Date y m d
-
-americanDate :: Stream s m Char => ParsecT s st m Date
-americanDate = do
-    m <- pMonth
-    char '/'
-    d <- pDay
-    char '/'
-    y <- pYear
-
-    pure $ Date y m d
-
-euroNumDate' :: Stream s m Char => Int -> ParsecT s st m Date
-euroNumDate' year = do
-  d <- pDay
-  char '.'
-  m <- pMonth
-  return $ Date year m d
-
-americanDate' :: Stream s m Char => Int -> ParsecT s st m Date
-americanDate' year = do
-  m <- pMonth
-  char '/'
-  d <- pDay
-  return $ Date year m d
-
-dashDate :: Stream s m Char => ParsecT s st m Date
-dashDate = do
-    y <- pYear
-    char '-'
-    m <- pMonth
-    char '-'
-    d <- pDay
-
-    pure $ Date y m d
-
-strDate :: Stream s m Char => ParsecT s st m Date
-strDate = do
-  d <- pDay
-  space
-  ms <- many1 letter
-  case lookupMonth ms of
-    Left ms' -> fail $ if null ms'
-                          then "unknown month: " ++ ms
-                          else "ambiguous month '" ++ ms ++ "' could be: " ++ intercalate " or " (map show ms')
-    Right m  -> do
-      space
-      y <- pYear
-      notFollowedBy $ char ':'
-      return $ Date y m d
-
-strDate' :: Stream s m Char => Int -> ParsecT s st m Date
-strDate' year = do
-  d <- pDay
-  space
-  ms <- many1 letter
-  case lookupMonth ms of
-    Left ms' -> fail $ if null ms'
-                          then "unknown month: " ++ ms
-                          else "ambiguous month '" ++ ms ++ "' could be: " ++ intercalate " or " (map show ms')
-    Right m  -> return $ Date year m d
-
-time24 :: Stream s m Char => ParsecT s st m TimeOfDay
-time24 = do
-  h <- number 2 23
+time :: Stream s m Char => Hours -> ParsecT s st m TimeOfDay
+time hMax = do
+  h <- number 2 hMax
   char ':'
   m <- number 2 59
   x <- optionMaybe $ char ':'
@@ -176,6 +99,11 @@ time24 = do
       notFollowedBy letter
       return $ TimeOfDay h m s 0
 
+time24 :: Stream s m Char => ParsecT s st m TimeOfDay
+time24 = time 23
+time12 :: Stream s m Char => ParsecT s st m TimeOfDay
+time12 = time 12
+
 ampm :: Stream s m Char => ParsecT s st m Int
 ampm = do
   s <- many1 letter
@@ -184,35 +112,68 @@ ampm = do
     "PM" -> return 12
     _ -> fail "AM/PM expected"
 
-time12 :: Stream s m Char => ParsecT s st m TimeOfDay
-time12 = do
-  h <- number 2 12
-  char ':'
-  m <- number 2 59
-  x <- optionMaybe $ char ':'
-  s <- case x of
-            Nothing -> return 0
-            Just _  -> number 2 59
-  optional space
-  hd <- ampm
-  return $ TimeOfDay (h + fromIntegral hd) m s 0
 
 pTime :: Stream s m Char => ParsecT s st m TimeOfDay
 pTime = choice $ map try [time12, time24]
 
+newtype DateFormat = DateFormat [(DatePart, String)]
+data DatePart = D | M | Y
+data DatePartVal = DV Int | MV Month | YV Int
+
+datePart :: Stream s m Char => DatePart -> ParsecT s st m DatePartVal
+datePart M = MV <$> pMonth
+datePart D = DV <$> pDay
+datePart Y = YV <$> pYear
+
+isYV (YV _) = True
+isYV _ = False
+
+isMV (MV _) = True
+isMV _ = False
+
+isDV (DV _) = True
+isDV _ = False
+
+monthPart :: [DatePartVal] -> Month
+monthPart = maybe January (\(MV m) -> m) . find isMV
+
+dayPart :: [DatePartVal] -> Int
+dayPart = maybe 1 (\(DV d) -> d) . find isDV
+
+yearPart :: Int -> [DatePartVal] -> Int
+yearPart year = maybe year (\(YV y) -> y) . find isYV
+
+makeFormat :: String -> [DatePart] -> DateFormat
+makeFormat sep parts = DateFormat $ zip parts $ repeat sep
+
+dateInFormat year (DateFormat parts) = do
+    partVals <- zipWithM go [1..] parts
+
+    pure $ Date (yearPart year partVals) (monthPart partVals) (dayPart partVals)
+    where
+        go i (p, sep)
+            -- The last one doesn't need to have a separator.
+            | i == length parts = datePart p
+            | otherwise = do
+                v <- datePart p
+                string sep
+                pure v
+
+euroNumDate = makeFormat "." [D, M, Y]
+writtenDate = DateFormat [(M, " "), (D, ","), (Y, "")]
+americanDate = makeFormat "/" [M, D, Y]
+dashDate = makeFormat "-" [Y, M, D]
+strDate = makeFormat " " [D, M, Y]
+spaceDate = makeFormat " " [D, M]
+spaceDateMD = makeFormat " " [M, D]
+
+dotDateMonth = makeFormat "." [D, M]
+dashDateMonth = makeFormat "-" [M, D]
+slashDateMonth = makeFormat "/" [M, D]
+
 pAbsDateTime :: Stream s m Char => Int -> ParsecT s st m DateTime
 pAbsDateTime year = do
-  date <- choice $ map (try . ($ year))
-    [
-      const euroNumDate
-    , const americanDate
-    , const strDate
-    , strDate'
-    , euroNumDate'
-    , americanDate'
-    , const writtenDate
-    , const dashDate
-    ]
+  date <- pAbsDate year
   optional $ char ','
   s <- optionMaybe space
   case s of
@@ -222,18 +183,9 @@ pAbsDateTime year = do
       return $ DateTime date t
 
 pAbsDate :: Stream s m Char => Int -> ParsecT s st m Date
-pAbsDate year =
-  choice $ map (try . ($ year))
-    [
-      const euroNumDate
-    , const americanDate
-    , const strDate
-    , strDate'
-    , euroNumDate'
-    , americanDate'
-    , const writtenDate
-    , const dashDate
-    ]
+pAbsDate year = choice $ map (try . dateInFormat year)
+    [euroNumDate, americanDate, strDate, writtenDate, dashDate,
+     dotDateMonth, dashDateMonth, slashDateMonth, spaceDate]
 
 intervalToPeriod :: DateInterval -> Period
 intervalToPeriod (Days ds)   = mempty { periodDays   = ds}
@@ -425,13 +377,14 @@ extractDates :: String -> IO [Date]
 extractDates str = do
     c <- defaultConfigIO
 
-    case runParser (solution c) () "" str of
+    case runParser (extract (p (c ^. now))) () "" str of
         Left err -> error $ show err
         Right dates -> pure dates
-
-solution :: Stream s m Char => Config -> ParsecT s st m [Date]
-solution c = Text.Parsec.many loop
     where
-        y = dateYear $ timeGetDate $ c ^. now
-        loop = try (pAbsDate y) <|> (anyChar >> loop)
+        p = pAbsDate . dateYear . timeGetDate
+
+extract :: Stream s m Char => ParsecT s st m a -> ParsecT s st m [a]
+extract parser = Text.Parsec.many loop
+    where
+        loop = try parser <|> (anyChar >> loop)
 
