@@ -19,13 +19,13 @@ takeN1 n parser = do
     pure $ v : rest
 
 -- | Parse natural number of N digits which is not greater than M
-number :: (Stream s m Char, Read a, Num a, Ord a, Show a)
+number :: (Stream s m Char, Integral a, Show a)
        => Int -- ^ Number of digits
        -> a   -- ^ Maximum value
        -> ParsecT s st m a
 number n m = do
   maybeT <- readMaybe <$> takeN1 n digit
-  case maybeT of
+  case fromIntegral <$> maybeT of
     Just t | t <= m -> pure t
     _ -> fail $ "Couldn't parse into number with parameters: " ++ show n ++ "," ++ show m
 

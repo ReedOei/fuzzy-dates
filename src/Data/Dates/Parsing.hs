@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE TupleSections      #-}
 
 -- | Parse strings that aren't so precise
 module Data.Dates.Parsing
@@ -17,7 +18,7 @@ module Data.Dates.Parsing
   , pAbsDate
   , pDate
   , pDateTime
-  , pTime
+  , time
   , pDateInterval
   , weekdayToInterval
   , dateWeekDay
@@ -89,18 +90,32 @@ dateWeekDay = getWeekDay . timeGetDate
 lookupMonth :: String -> Either [Month] Month
 lookupMonth = uniqFuzzyMatch
 
-time :: Stream s m Char => Int -> ParsecT s st m TimeOfDay
-time hMax = do
-  h <- fromIntegral <$> number 2 hMax
-  char ':'
-  m <- number 2 59
-  x <- optionMaybe $ char ':'
-  case x of
-    Nothing -> return $ TimeOfDay (Hours h) (Minutes m) 0 0
-    Just _ -> do
-      s <- number 2 59
-      notFollowedBy letter
-      return $ TimeOfDay (Hours h) (Minutes m) s 0
+time :: Stream s m Char => ParsecT s st m TimeOfDay
+time = do
+    h <- fromIntegral <$> number 2 23
+    minSep <- optionMaybe $ char ':' <|> char '.'
+    (m, mOffset) <-
+        case minSep of
+            Nothing -> (0,) <$> (optional spaces >> optionMaybe ampm)
+            Just _ -> do
+                m <- number 2 59
+                (m,) <$> (optional spaces >> optionMaybe ampm)
+
+    sep <- optionMaybe $ char ':' <|> char '.'
+    (s, offset) <-
+        case sep of
+            Nothing -> (0,) <$> (optional spaces >> optionMaybe ampm)
+            Just _ -> do
+                s <- number 2 59
+                (s,) <$> (optional spaces >> optionMaybe ampm)
+
+    if h > 12 then -- It shouldn't be a 24 hour time, so just ignore offset, if any
+        pure $ TimeOfDay (Hours h) (Minutes m) (Seconds s) 0
+    else
+        case (mOffset, offset) of
+            (Just mo, _) -> pure $ TimeOfDay (Hours (h + fromIntegral mo)) (Minutes m) (Seconds s) 0
+            (Nothing, Just o) -> pure $ TimeOfDay (Hours (h + fromIntegral o)) (Minutes m) (Seconds s) 0
+            (Nothing, Nothing)-> pure $ TimeOfDay (Hours h) (Minutes m) (Seconds s) 0
 
 ampm :: Stream s m Char => ParsecT s st m Int
 ampm = do
@@ -109,10 +124,6 @@ ampm = do
     "AM" -> return 0
     "PM" -> return 12
     _ -> fail "AM/PM expected"
-
-
-pTime :: Stream s m Char => ParsecT s st m TimeOfDay
-pTime = choice $ map try [time 12, time 23]
 
 newtype DateFormat = DateFormat [(DatePart, String)]
 data DatePart = D | M | Y
@@ -175,7 +186,7 @@ pAbsDateTime year = do
 
     optional spaces
 
-    maybeT <- optionMaybe pTime
+    maybeT <- optionMaybe time
 
     case maybeT of
         Nothing -> pure $ DateTime date (TimeOfDay 0 0 0 0)

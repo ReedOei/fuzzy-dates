@@ -95,6 +95,16 @@ spec = do
         "next thursday"
       `shouldBe` Right testDateTime { dtDate = (dtDate testDateTime) { dateDay = 19 } }
 
+  describe "time" $
+    mapM_ (\(str, ans) -> it ("parses the time strings like '" ++ str ++ "'") (parse time "" str `shouldBe` Right ans))
+        [ ("13:15", TimeOfDay 13 15 0 0)
+        , ("8:00 AM", TimeOfDay 8 0 0 0)
+        , ("9:15", TimeOfDay 9 15 0 0)
+        , ("00.00.15", TimeOfDay 0 0 15 0)
+        , ("1:09 PM", TimeOfDay 13 9 0 0)
+        , ("04.15", TimeOfDay 4 15 0 0)
+        , ("9 AM", TimeOfDay 9 0 0 0)]
+
   describe "parseDate" $
     mapM_
       (\(str, ans) ->
@@ -126,17 +136,19 @@ spec = do
         , ("Jan 19", [Date 2018 January 19])
         , ("The party will be on 6/9", [Date 2018 June 9])
         , ("Start: November 27, 1993\nEnd: December 5, 1993", [Date 1993 November 27, Date 1993 December 5])
-        , ("1647-09-5 13:15", [Date 1647 September 5])]
+        , ("1647-09-5 13:15 or 1913-1-29", [Date 1647 September 5, Date 1913 January 29])]
 
         -- SHOULD IGNORE TIMES WHEN PARSING DATES, ADD TESTS....
 
   describe "extractDatesTimesY" $ do
     mapM_ (\(str, ans) -> it ("can also parse plain dates like: '" ++ str ++ "'") (extractDateTimesY 2018 str `shouldBe` ans))
-        [ ("2017-08-9", [DateTime {dtDate = Date {dateYear = 2017, dateMonth = August, dateDay = 9}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])
-        , ("Jan 19", [DateTime {dtDate = Date {dateYear = 2018, dateMonth = January, dateDay = 19}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])
-        , ("The party will be on 6/9", [DateTime {dtDate = Date {dateYear = 2018, dateMonth = June, dateDay = 9}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])
-        , ("Start: November 27, 1993\nEnd: December 5, 1993", [DateTime {dtDate = Date {dateYear = 1993, dateMonth = November, dateDay = 27}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}},DateTime {dtDate = Date {dateYear = 1993, dateMonth = December, dateDay = 5}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])]
+        [ ("2017-08-9", [DateTime {dtDate = Date 2017 August 9, dtTime = TimeOfDay 0 0 0 0}])
+        , ("Jan 19", [DateTime {dtDate = Date 2018 January 19, dtTime = TimeOfDay 0 0 0 0}])
+        , ("The party will be on 6/9", [DateTime {dtDate = Date 2018 June 9, dtTime = TimeOfDay 0 0 0 0}])
+        , ("Start: November 27, 1993\nEnd: December 5, 1993", [DateTime {dtDate = Date 1993 November 27, dtTime = TimeOfDay 0 0 0 0}, DateTime {dtDate = Date 1993 December 5, dtTime = TimeOfDay 0 0 0 0}])]
 
     mapM_ (\(str, ans) -> it ("understands dates with times like: '" ++ str ++ "'") (extractDateTimesY 2018 str `shouldBe` ans))
-        [ ("2017-08-9", [DateTime {dtDate = Date {dateYear = 2017, dateMonth = August, dateDay = 9}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])]
+        [ ("2017-08-9 08:15", [DateTime {dtDate = Date 2017 August 9, dtTime = TimeOfDay 8 15 0 0}])
+        , ("feb 7 3:09:06 AM", [DateTime {dtDate = Date 2018 February 7, dtTime = TimeOfDay 3 9 6 0}])
+        , ("Date/Time of Birth: August 29, 1765 AD, Date/Time of Death: 30 November 1823 4 PM", [DateTime {dtDate = Date 1765 August 29, dtTime = TimeOfDay 0 0 0 0}, DateTime {dtDate = Date 1823 November 30, dtTime = TimeOfDay 16 0 0 0}])]
 
