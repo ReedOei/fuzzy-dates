@@ -150,5 +150,6 @@ spec = do
     mapM_ (\(str, ans) -> it ("understands dates with times like: '" ++ str ++ "'") (extractDateTimesY 2018 str `shouldBe` ans))
         [ ("2017-08-9 08:15", [DateTime {dtDate = Date 2017 August 9, dtTime = TimeOfDay 8 15 0 0}])
         , ("feb 7 3:09:06 AM", [DateTime {dtDate = Date 2018 February 7, dtTime = TimeOfDay 3 9 6 0}])
+        , ("This morning, 06.07.16 at 7:35 AM, the fire was stopped.", [DateTime {dtDate = Date 2016 July 6, dtTime = TimeOfDay 7 35 0 0}])
         , ("Date/Time of Birth: August 29, 1765 AD, Date/Time of Death: 30 November 1823 4 PM", [DateTime {dtDate = Date 1765 August 29, dtTime = TimeOfDay 0 0 0 0}, DateTime {dtDate = Date 1823 November 30, dtTime = TimeOfDay 16 0 0 0}])]
 

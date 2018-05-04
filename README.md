@@ -17,3 +17,8 @@ Import the main module, then call one of the extract dates functions, like so:
 [Date 2018 June 9]
 ```
 
+```
+>>> import Data.Dates.Parsing
+>>> extractDateTimes "This morning, 06.07.16 at 7:35 AM, the fire was stopped." :: IO [DateTime]
+[DateTime {dtDate = Date {dateYear = 2016, dateMonth = July, dateDay = 6}, dtTime = TimeOfDay {todHour = 7h, todMin = 35m, todSec = 0s, todNSec = 0ns}}]
+

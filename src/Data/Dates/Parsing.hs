@@ -185,6 +185,8 @@ pAbsDateTime year = do
     date <- pAbsDate year
 
     optional spaces
+    optional $ string "at"
+    optional spaces
 
     maybeT <- optionMaybe time
 
