@@ -29,7 +29,9 @@ module Data.Dates.Parsing
   , negateInterval
   , minusInterval
   , dateInFormat
-  , extractDates, extractDatesY, extract
+  , extractDates, extractDatesY
+  , extractDateTimes, extractDateTimesY
+  , extract
   ) where
 
 import Control.Lens
@@ -39,6 +41,7 @@ import Data.Char                            (toLower)
 import Data.Data                            (Data, Typeable)
 import Data.Hourglass
 import Data.List                            (intercalate, find)
+import Data.Maybe (catMaybes)
 import Text.Parsec
 import Text.Read (readMaybe)
 
@@ -86,23 +89,18 @@ dateWeekDay = getWeekDay . timeGetDate
 lookupMonth :: String -> Either [Month] Month
 lookupMonth = uniqFuzzyMatch
 
-time :: Stream s m Char => Hours -> ParsecT s st m TimeOfDay
+time :: Stream s m Char => Int -> ParsecT s st m TimeOfDay
 time hMax = do
-  h <- number 2 hMax
+  h <- fromIntegral <$> number 2 hMax
   char ':'
   m <- number 2 59
   x <- optionMaybe $ char ':'
   case x of
-    Nothing -> return $ TimeOfDay h m 0 0
+    Nothing -> return $ TimeOfDay (Hours h) (Minutes m) 0 0
     Just _ -> do
       s <- number 2 59
       notFollowedBy letter
-      return $ TimeOfDay h m s 0
-
-time24 :: Stream s m Char => ParsecT s st m TimeOfDay
-time24 = time 23
-time12 :: Stream s m Char => ParsecT s st m TimeOfDay
-time12 = time 12
+      return $ TimeOfDay (Hours h) (Minutes m) s 0
 
 ampm :: Stream s m Char => ParsecT s st m Int
 ampm = do
@@ -114,7 +112,7 @@ ampm = do
 
 
 pTime :: Stream s m Char => ParsecT s st m TimeOfDay
-pTime = choice $ map try [time12, time24]
+pTime = choice $ map try [time 12, time 23]
 
 newtype DateFormat = DateFormat [(DatePart, String)]
 data DatePart = D | M | Y
@@ -173,14 +171,15 @@ slashDateMonth = makeFormat "/" [M, D]
 
 pAbsDateTime :: Stream s m Char => Int -> ParsecT s st m DateTime
 pAbsDateTime year = do
-  date <- pAbsDate year
-  optional $ char ','
-  s <- optionMaybe space
-  case s of
-    Nothing -> return $ DateTime date (TimeOfDay 0 0 0 0)
-    Just _ -> do
-      t <- pTime
-      return $ DateTime date t
+    date <- pAbsDate year
+
+    optional spaces
+
+    maybeT <- optionMaybe pTime
+
+    case maybeT of
+        Nothing -> pure $ DateTime date (TimeOfDay 0 0 0 0)
+        Just t -> pure $ DateTime date t
 
 pAbsDate :: Stream s m Char => Int -> ParsecT s st m Date
 pAbsDate year = choice $ map (try . dateInFormat year)
@@ -390,8 +389,31 @@ extractDatesY y str =
         Left err -> error $ show err
         Right dates -> dates
 
+extractDateTimes :: String -> IO [DateTime]
+extractDateTimes str = do
+    c <- defaultConfigIO
+
+    pure $ extractDateTimesY (dateYear (timeGetDate (c ^. now))) str
+
+-- | Extract dates with optional times from a string, with the first argument being the current year (used for things like "Jan 18").
+-- If no time is specified, will return time at midnight.
+--
+-- >>> extractDateTimesY 2018 "The talk starts at 12.09.12 8:00 AM"
+-- [DateTime {dtDate = Date {dateYear = 2012, dateMonth = September, dateDay = 12}, dtTime = TimeOfDay {todHour = 8h, todMin = 0m, todSec = 0s, todNSec = 0ns}}]
+--
+-- >>> extractDateTimesY 2018 "The party will be on 6/9"
+-- [DateTime {dtDate = Date {dateYear = 2018, dateMonth = June, dateDay = 9}, dtTime = TimeOfDay {todHour = 0h, todMin = 0m, todSec = 0s, todNSec = 0ns}}]
+extractDateTimesY :: Int -> String -> [DateTime]
+extractDateTimesY y str =
+    case parse (extract (pAbsDateTime y)) "" str of
+        Left err -> error $ show err
+        Right dates -> dates
+
 extract :: Stream s m Char => ParsecT s st m a -> ParsecT s st m [a]
-extract parser = Text.Parsec.many loop
+extract parser = catMaybes <$> Text.Parsec.manyTill (try (Just <$> loop) <|> (anyChar >> pure Nothing)) eof
     where
-        loop = try parser <|> (anyChar >> loop)
+        loop = try parser <|> do
+            anyChar
+            notFollowedBy eof
+            loop
 

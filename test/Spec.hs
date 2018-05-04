@@ -120,10 +120,23 @@ spec = do
       , ("DECEMBER 8, -9", Date (-9) December 8)
       ]
 
-  describe "extractDatesY" $
+  describe "extractDateTimesY" $
     mapM_ (\(str, ans) -> it ("understands '" ++ str ++ "'") (extractDatesY 2018 str `shouldBe` ans))
         [ ("2017-08-9", [Date 2017 August 9])
         , ("Jan 19", [Date 2018 January 19])
         , ("The party will be on 6/9", [Date 2018 June 9])
-        , ("Start: November 27, 1993\nEnd: December 5, 1993", [Date 1993 November 27, Date 1993 December 5])]
+        , ("Start: November 27, 1993\nEnd: December 5, 1993", [Date 1993 November 27, Date 1993 December 5])
+        , ("1647-09-5 13:15", [Date 1647 September 5])]
+
+        -- SHOULD IGNORE TIMES WHEN PARSING DATES, ADD TESTS....
+
+  describe "extractDatesTimesY" $ do
+    mapM_ (\(str, ans) -> it ("can also parse plain dates like: '" ++ str ++ "'") (extractDateTimesY 2018 str `shouldBe` ans))
+        [ ("2017-08-9", [DateTime {dtDate = Date {dateYear = 2017, dateMonth = August, dateDay = 9}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])
+        , ("Jan 19", [DateTime {dtDate = Date {dateYear = 2018, dateMonth = January, dateDay = 19}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])
+        , ("The party will be on 6/9", [DateTime {dtDate = Date {dateYear = 2018, dateMonth = June, dateDay = 9}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])
+        , ("Start: November 27, 1993\nEnd: December 5, 1993", [DateTime {dtDate = Date {dateYear = 1993, dateMonth = November, dateDay = 27}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}},DateTime {dtDate = Date {dateYear = 1993, dateMonth = December, dateDay = 5}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])]
+
+    mapM_ (\(str, ans) -> it ("understands dates with times like: '" ++ str ++ "'") (extractDateTimesY 2018 str `shouldBe` ans))
+        [ ("2017-08-9", [DateTime {dtDate = Date {dateYear = 2017, dateMonth = August, dateDay = 9}, dtTime = TimeOfDay {todHour = Hours 0, todMin = Minutes 0, todSec = Seconds 0, todNSec = NanoSeconds 0}}])]
 
