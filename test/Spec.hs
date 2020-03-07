@@ -95,6 +95,13 @@ spec = do
         "next thursday"
       `shouldBe` Right testDateTime { dtDate = (dtDate testDateTime) { dateDay = 19 } }
 
+  describe "extractDateTimesConfig" $ do
+        it "parses '2 weeks/years/days/months ago'" $ do
+            extractDateTimesConfig testConfig "2 days ago" `shouldBe` [testDateTime { dtDate = (dtDate testDateTime) { dateDay = 12} }]
+            extractDateTimesConfig testConfig "4 weeks ago" `shouldBe` [testDateTime { dtDate = (dtDate testDateTime) { dateDay = 14, dateMonth = February } }]
+            extractDateTimesConfig testConfig "1 month ago" `shouldBe` [testDateTime { dtDate = (dtDate testDateTime) { dateDay = 14, dateMonth = February} }]
+            extractDateTimesConfig testConfig "8 years ago" `shouldBe` [testDateTime { dtDate = (dtDate testDateTime) { dateYear = 2007 } }]
+
   describe "time" $
     mapM_ (\(str, ans) -> it ("parses the time strings like '" ++ str ++ "'") (parse time "" str `shouldBe` Right ans))
         [ ("13:15", TimeOfDay 13 15 0 0)

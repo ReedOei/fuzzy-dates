@@ -30,8 +30,8 @@ module Data.Dates.Parsing
   , negateInterval
   , minusInterval
   , dateInFormat
-  , extractDates, extractDatesY
-  , extractDateTimes, extractDateTimesY
+  , extractDates, extractDatesY, extractDatesConfig
+  , extractDateTimes, extractDateTimesY, extractDateTimesConfig
   , extract
   ) where
 
@@ -251,7 +251,7 @@ pDateInterval = do
 pRelDate :: Stream s m Char => Config -> ParsecT s st m DateTime
 pRelDate c = do
   offs <- try futureDate
-     <|> try passDate
+     <|> try pastDate
      <|> try today
      <|> try tomorrow
      <|> yesterday
@@ -324,12 +324,12 @@ futureDate = do
       tp <- pDateIntervalType
       pure $ tp n
 
-passDate :: Stream s m Char => ParsecT s st m DateInterval
-passDate = do
+pastDate :: Stream s m Char => ParsecT s st m DateInterval
+pastDate = do
   maybeN <- readMaybe <$> many1 digit
 
   case maybeN of
-    Nothing -> fail "Noperino."
+    Nothing -> fail "Could not parse digit."
     Just n -> do
       char ' '
       tp <- pDateIntervalType
@@ -387,10 +387,13 @@ parseDateTime c = runParser (pDateTime c) () ""
 
 -- | Same as extractDatesY, but will get the current year from the system, so you don't have to provide it.
 extractDates :: String -> IO [Date]
-extractDates str = do
-    c <- defaultConfigIO
+extractDates str = extractDatesConfig <$> defaultConfigIO <*> pure str
 
-    pure $ extractDatesY (dateYear (timeGetDate (c ^. now))) str
+extractDatesConfig :: Config -> String -> [Date]
+extractDatesConfig config str =
+    case parse (extract (pDate config)) "" str of
+        Left err -> []
+        Right dates -> dates
 
 -- | Extract dates from a string, with the first argument being the current year (used for things like "Jan 18").
 --
@@ -403,13 +406,12 @@ extractDatesY y str =
         Right dates -> dates
 
 extractDateTimes :: String -> IO [DateTime]
-extractDateTimes str = do
-    c <- defaultConfigIO
-
-    pure $ extractDateTimesY (dateYear (timeGetDate (c ^. now))) str
+extractDateTimes str = extractDateTimesConfig <$> defaultConfigIO <*> pure str
 
 -- | Extract dates with optional times from a string, with the first argument being the current year (used for things like "Jan 18").
 -- If no time is specified, will return time at midnight.
+--
+-- Note: This function **WILL NOT** parse relative dates like "2 weeks ago." For that, you must use `extractDateTimesConfig` or `extractDateTimes`, because the parser needs to know the exact date.
 --
 -- >>> extractDateTimesY 2018 "The talk starts at 12.09.12 8:00 AM"
 -- [DateTime {dtDate = Date {dateYear = 2012, dateMonth = September, dateDay = 12}, dtTime = TimeOfDay {todHour = 8h, todMin = 0m, todSec = 0s, todNSec = 0ns}}]
@@ -419,7 +421,13 @@ extractDateTimes str = do
 extractDateTimesY :: Int -> String -> [DateTime]
 extractDateTimesY y str =
     case parse (extract (pAbsDateTime y)) "" str of
-        Left err -> error $ show err
+        Left err -> []
+        Right dates -> dates
+
+extractDateTimesConfig :: Config -> String -> [DateTime]
+extractDateTimesConfig config str =
+    case parse (extract (pDateTime config)) "" str of
+        Left err -> []
         Right dates -> dates
 
 extract :: Stream s m Char => ParsecT s st m a -> ParsecT s st m [a]
